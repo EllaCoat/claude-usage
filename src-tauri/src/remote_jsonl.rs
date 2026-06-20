@@ -4,10 +4,12 @@ use crate::win;
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine as _;
 use chrono::{Duration, Utc};
+use std::io::Read;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
-use std::time::{Duration as StdDuration, Instant};
+use std::time::Duration as StdDuration;
+use wait_timeout::ChildExt;
 
 // ssh 全体の hard timeout (秒)。 ConnectTimeout / ServerAliveInterval だけでは
 // auth フェーズや known_hosts 確認等で粘られるケースを救えないので、
@@ -68,6 +70,8 @@ pub fn fetch(host: &str) -> Result<UsageSummary, String> {
     // - ConnectTimeout=5             : TCP connect を 5s で諦める
     // - ServerAliveInterval/CountMax : 確立後の通信途絶を ~20s で検知 → 切断
     // - BatchMode=yes                : password / passphrase 等の対話 prompt を全面禁止 (= 即 fail)
+    // - ClearAllForwardings=yes      : ~/.ssh/config 由来の RemoteForward / LocalForward を全部 disable
+    //                                  (= 不要な forward fail warning + 余分な setup を消す)
     // - -vvv -E <log>                : 失敗診断用、 stderr にではなく log file に書く (= 通常時は無害)
     let mut cmd = Command::new(&ssh_exe);
     cmd.args([
@@ -82,6 +86,8 @@ pub fn fetch(host: &str) -> Result<UsageSummary, String> {
         "ServerAliveCountMax=2",
         "-o",
         "BatchMode=yes",
+        "-o",
+        "ClearAllForwardings=yes",
         host,
         &remote_cmd,
     ])
@@ -93,45 +99,56 @@ pub fn fetch(host: &str) -> Result<UsageSummary, String> {
 
     let mut child = cmd.spawn().map_err(|e| format!("ssh spawn failed: {}", e))?;
 
-    // hard timeout: 一定時間内に終わらなければ kill。 try_wait + sleep の polling で実装 (deps 追加なし)。
-    let start = Instant::now();
+    // ! 重要: Windows pipe の OS buffer は ~64 KB しかない。 wait_with_output は child 終了後に
+    // ! まとめて読むので、 jq 出力が 64 KB を超えると ssh client → stdout pipe → block で
+    // ! child が完了せず、 こちら側の wait も帰らないという pipe deadlock になる。
+    // ! → spawn 直後に stdout / stderr を別 thread で drain して buffer を空け続ける。
+    let stdout = child.stdout.take().ok_or("ssh stdout missing")?;
+    let stderr = child.stderr.take().ok_or("ssh stderr missing")?;
+    let stdout_handle = thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stdout.take(64 * 1024 * 1024).read_to_end(&mut buf);
+        buf
+    });
+    let stderr_handle = thread::spawn(move || {
+        let mut buf = Vec::new();
+        let _ = stderr.take(1 * 1024 * 1024).read_to_end(&mut buf);
+        buf
+    });
+
+    // wait_timeout crate で「指定秒以内に終わらなければ None を返す」 wait を取得。
     let timeout = StdDuration::from_secs(SSH_HARD_TIMEOUT_SEC);
-    loop {
-        match child.try_wait() {
-            Ok(Some(_)) => break,
-            Ok(None) => {
-                if start.elapsed() >= timeout {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    return Err(format!(
-                        "ssh {} timed out after {}s (log: {})",
-                        host, SSH_HARD_TIMEOUT_SEC, log_str
-                    ));
-                }
-                thread::sleep(StdDuration::from_millis(200));
-            }
-            Err(e) => return Err(format!("ssh wait failed: {}", e)),
+    let status_opt = child
+        .wait_timeout(timeout)
+        .map_err(|e| format!("ssh wait failed: {}", e))?;
+
+    let status = match status_opt {
+        Some(s) => s,
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(format!(
+                "ssh {} timed out after {}s (log: {})",
+                host, SSH_HARD_TIMEOUT_SEC, log_str
+            ));
         }
-    }
+    };
 
-    // wait 完了後に stdout/stderr を一括回収 (jq filter 済みで数 KB 想定、 stderr deadlock の懸念なし)。
-    let output = child
-        .wait_with_output()
-        .map_err(|e| format!("ssh read failed: {}", e))?;
+    let stdout_bytes = stdout_handle.join().unwrap_or_default();
+    let stderr_bytes = stderr_handle.join().unwrap_or_default();
 
-    if !output.status.success() {
-        let err = String::from_utf8_lossy(&output.stderr);
+    if !status.success() {
+        let err = String::from_utf8_lossy(&stderr_bytes);
         return Err(format!(
             "ssh {} exited {} (log: {}): {}",
             host,
-            output.status,
+            status,
             log_str,
             err.trim()
         ));
     }
 
-    let entries: Vec<_> = output
-        .stdout
+    let entries: Vec<_> = stdout_bytes
         .split(|b| *b == b'\n')
         .filter(|l| !l.is_empty())
         .filter_map(|l| std::str::from_utf8(l).ok())
