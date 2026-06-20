@@ -66,7 +66,7 @@ pub fn scan_dir(dir: &Path) -> Vec<UsageEntry> {
     entries
 }
 
-fn parse_line(line: &str) -> Option<UsageEntry> {
+pub fn parse_line(line: &str) -> Option<UsageEntry> {
     let l: Line = serde_json::from_str(line).ok()?;
     if l.typ.as_deref() != Some("assistant") {
         return None;

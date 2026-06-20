@@ -11,42 +11,88 @@
     <main class="container">
       <header>
         <h1>Claude Usage</h1>
-        <span id="status" class="status muted">—</span>
+        <button id="refresh-all" class="refresh-btn" title="Refresh all sources">↻</button>
       </header>
 
+      <!-- Official usage (claude --print /usage) -->
       <section class="card">
         <div class="row spread">
-          <span class="label">5h window</span>
-          <span id="progress-label" class="muted small">—</span>
+          <span class="section-title">Official usage <span class="muted small">(local <code>claude /usage</code>)</span></span>
+          <span id="official-status" class="status muted">—</span>
         </div>
-        <div class="progress" aria-label="window progress">
-          <div id="progress-fill" class="progress-fill"></div>
+        <div class="bar-row">
+          <span class="bar-label">Session</span>
+          <div class="progress"><div id="official-session-fill" class="progress-fill"></div></div>
+          <span id="official-session-text" class="bar-value">—</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Week (all)</span>
+          <div class="progress"><div id="official-week-fill" class="progress-fill"></div></div>
+          <span id="official-week-text" class="bar-value">—</span>
+        </div>
+        <div class="bar-row">
+          <span class="bar-label">Week (Sonnet)</span>
+          <div class="progress"><div id="official-sonnet-fill" class="progress-fill"></div></div>
+          <span id="official-sonnet-text" class="bar-value">—</span>
+        </div>
+        <div id="official-reset" class="small muted reset-line">—</div>
+      </section>
+
+      <!-- Local jsonl 5h window -->
+      <section class="card">
+        <div class="row spread">
+          <span class="section-title">Local 5h window <span class="muted small">(jsonl on this PC)</span></span>
+          <span id="local-status" class="status muted">—</span>
+        </div>
+        <div class="row spread">
+          <span class="label">progress</span>
+          <span id="local-progress-label" class="muted small">—</span>
+        </div>
+        <div class="progress">
+          <div id="local-progress-fill" class="progress-fill"></div>
         </div>
         <div class="row spread small muted">
-          <span id="window-start">—</span>
-          <span id="window-end">—</span>
+          <span id="local-window-start">—</span>
+          <span id="local-window-end">—</span>
         </div>
-      </section>
-
-      <section class="card stats">
-        <div class="stat">
-          <span class="label">cost</span>
-          <span id="cost" class="big">—</span>
+        <div class="stats">
+          <div class="stat"><span class="label">cost</span><span id="local-cost" class="big">—</span></div>
+          <div class="stat"><span class="label">messages</span><span id="local-messages" class="big">—</span></div>
         </div>
-        <div class="stat">
-          <span class="label">messages</span>
-          <span id="messages" class="big">—</span>
-        </div>
-      </section>
-
-      <section class="card">
         <div class="label">tokens</div>
-        <div id="tokens" class="mono small">—</div>
+        <div id="local-tokens" class="mono small">—</div>
+        <table id="local-by-model">
+          <thead>
+            <tr><th>model</th><th class="num">msgs</th><th class="num">tokens</th><th class="num">cost</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
       </section>
 
+      <!-- Remote (EC2) jsonl 5h window -->
       <section class="card">
-        <div class="label">by model</div>
-        <table id="by-model">
+        <div class="row spread">
+          <span class="section-title">Remote 5h window <span class="muted small">(ssh <code id="remote-host-label">ella-mc</code> + jq)</span></span>
+          <span id="remote-status" class="status muted">—</span>
+        </div>
+        <div class="row spread">
+          <span class="label">progress</span>
+          <span id="remote-progress-label" class="muted small">—</span>
+        </div>
+        <div class="progress">
+          <div id="remote-progress-fill" class="progress-fill"></div>
+        </div>
+        <div class="row spread small muted">
+          <span id="remote-window-start">—</span>
+          <span id="remote-window-end">—</span>
+        </div>
+        <div class="stats">
+          <div class="stat"><span class="label">cost</span><span id="remote-cost" class="big">—</span></div>
+          <div class="stat"><span class="label">messages</span><span id="remote-messages" class="big">—</span></div>
+        </div>
+        <div class="label">tokens</div>
+        <div id="remote-tokens" class="mono small">—</div>
+        <table id="remote-by-model">
           <thead>
             <tr><th>model</th><th class="num">msgs</th><th class="num">tokens</th><th class="num">cost</th></tr>
           </thead>
