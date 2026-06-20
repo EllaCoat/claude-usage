@@ -65,6 +65,16 @@ const fmtTime = (iso: string | null) => {
   return new Date(iso).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 };
 
+// claude --print /usage が "Jun 20, 10:30pm (Etc/GMT-9)" のように
+// POSIX 表記の timezone を返してくる (Etc/GMT-9 は実は JST = UTC+9 だが
+// 見た目で UTC-9 と誤読される)。 frontend では JST/UTC ラベルに置換して表示。
+const prettyReset = (s: string | null): string | null => {
+  if (!s) return null;
+  return s
+    .replace(/Etc\/GMT-9\b/g, "JST")
+    .replace(/Etc\/UTC\b|Etc\/GMT\b/g, "UTC");
+};
+
 const $ = (sel: string) => {
   const el = document.querySelector(sel);
   if (!el) throw new Error(`missing element: ${sel}`);
@@ -151,8 +161,8 @@ async function refreshOfficial() {
     setBar("#official-sonnet-fill", "#official-sonnet-text", o.week_sonnet_pct);
 
     const lines: string[] = [];
-    if (o.session_reset) lines.push(`session resets ${o.session_reset}`);
-    if (o.week_all_reset) lines.push(`week resets ${o.week_all_reset}`);
+    if (o.session_reset) lines.push(`session resets ${prettyReset(o.session_reset)}`);
+    if (o.week_all_reset) lines.push(`week resets ${prettyReset(o.week_all_reset)}`);
     $("#official-reset").textContent = lines.join(" · ") || "—";
 
     setStatus(
