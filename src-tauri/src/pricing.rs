@@ -15,32 +15,45 @@ const UNKNOWN: ModelPricing = ModelPricing {
     cache_read: 0.0,
 };
 
-pub fn lookup(model: &str) -> ModelPricing {
-    if model.starts_with("claude-opus-4") || model.starts_with("claude-fable-") {
-        ModelPricing {
-            input: 15.0,
-            output: 75.0,
-            cache_5m_write: 18.75,
-            cache_1h_write: 30.0,
-            cache_read: 1.50,
-        }
-    } else if model.starts_with("claude-sonnet-4") {
-        ModelPricing {
-            input: 3.0,
-            output: 15.0,
-            cache_5m_write: 3.75,
-            cache_1h_write: 6.0,
-            cache_read: 0.30,
-        }
-    } else if model.starts_with("claude-haiku-4") {
-        ModelPricing {
-            input: 1.0,
-            output: 5.0,
-            cache_5m_write: 1.25,
-            cache_1h_write: 2.0,
-            cache_read: 0.10,
-        }
-    } else {
-        UNKNOWN
+// 公式: 5m write = input × 1.25, 1h write = input × 2.0, cache read = input × 0.1
+// https://platform.claude.com/docs/en/about-claude/pricing
+fn from_base(input: f64, output: f64) -> ModelPricing {
+    ModelPricing {
+        input,
+        output,
+        cache_5m_write: input * 1.25,
+        cache_1h_write: input * 2.0,
+        cache_read: input * 0.10,
     }
+}
+
+// claude-opus-4-7 / claude-opus-4-7-20251201 等から minor バージョン (= 7) を抜く。
+// claude-opus-4 (無印, retired) は None。
+fn opus_minor(model: &str) -> Option<u32> {
+    let rest = model.strip_prefix("claude-opus-4-")?;
+    rest.split('-').next()?.parse().ok()
+}
+
+pub fn lookup(model: &str) -> ModelPricing {
+    if let Some(minor) = opus_minor(model) {
+        // 4.5+ は新 pricing、 4.0/4.1 は legacy
+        if minor >= 5 {
+            return from_base(5.0, 25.0);
+        } else {
+            return from_base(15.0, 75.0);
+        }
+    }
+    if model == "claude-opus-4" {
+        return from_base(15.0, 75.0);
+    }
+    if model.starts_with("claude-fable-5") || model.starts_with("claude-mythos-5") {
+        return from_base(10.0, 50.0);
+    }
+    if model.starts_with("claude-sonnet-4") {
+        return from_base(3.0, 15.0);
+    }
+    if model.starts_with("claude-haiku-4") {
+        return from_base(1.0, 5.0);
+    }
+    UNKNOWN
 }

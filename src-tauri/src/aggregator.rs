@@ -36,39 +36,37 @@ pub struct UsageSummary {
 
 pub fn aggregate(entries: &[UsageEntry], now: DateTime<Utc>) -> UsageSummary {
     let window_duration = Duration::hours(WINDOW_HOURS);
-    let cutoff = now - window_duration;
 
-    let in_window: Vec<&UsageEntry> = entries
-        .iter()
-        .filter(|e| e.timestamp > cutoff && e.timestamp <= now)
-        .collect();
+    let mut sorted: Vec<&UsageEntry> = entries.iter().filter(|e| e.timestamp <= now).collect();
+    sorted.sort_by_key(|e| e.timestamp);
 
-    if in_window.is_empty() {
-        return UsageSummary {
-            window_start: None,
-            window_end: None,
-            now,
-            elapsed_seconds: 0,
-            remaining_seconds: 0,
-            window_progress: 0.0,
-            total_messages: 0,
-            total_input_tokens: 0,
-            total_output_tokens: 0,
-            total_cache_creation_tokens: 0,
-            total_cache_read_tokens: 0,
-            total_cost_usd: 0.0,
-            by_model: vec![],
-        };
+    // session 分割: 前 window の終了 (start + 5h) を跨いだ entry を次 window 起点に。
+    let mut window_start: Option<DateTime<Utc>> = None;
+    for e in &sorted {
+        match window_start {
+            None => window_start = Some(e.timestamp),
+            Some(ws) if e.timestamp >= ws + window_duration => window_start = Some(e.timestamp),
+            _ => {}
+        }
     }
 
-    let window_start = in_window.iter().map(|e| e.timestamp).min().unwrap();
-    let window_end = window_start + window_duration;
-    let elapsed = (now - window_start).num_seconds().max(0);
-    let remaining = (window_end - now).num_seconds().max(0);
+    let Some(start) = window_start else {
+        return empty(now);
+    };
+    let end = start + window_duration;
+
+    if now >= end {
+        return empty(now);
+    }
+
+    let elapsed = (now - start).num_seconds().max(0);
+    let remaining = (end - now).num_seconds().max(0);
     let progress = (elapsed as f64 / (WINDOW_HOURS * 3600) as f64).clamp(0.0, 1.0);
 
+    let in_window = sorted.iter().filter(|e| e.timestamp >= start);
+
     let mut groups: BTreeMap<String, ModelBreakdown> = BTreeMap::new();
-    for e in &in_window {
+    for e in in_window {
         let p = pricing::lookup(&e.model);
         let cost = (e.input_tokens as f64 * p.input
             + e.output_tokens as f64 * p.output
@@ -97,7 +95,11 @@ pub fn aggregate(entries: &[UsageEntry], now: DateTime<Utc>) -> UsageSummary {
     }
 
     let mut by_model: Vec<ModelBreakdown> = groups.into_values().collect();
-    by_model.sort_by(|a, b| b.cost_usd.partial_cmp(&a.cost_usd).unwrap_or(std::cmp::Ordering::Equal));
+    by_model.sort_by(|a, b| {
+        b.cost_usd
+            .partial_cmp(&a.cost_usd)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
 
     let total_messages = by_model.iter().map(|m| m.message_count).sum();
     let total_input = by_model.iter().map(|m| m.input_tokens).sum();
@@ -107,8 +109,8 @@ pub fn aggregate(entries: &[UsageEntry], now: DateTime<Utc>) -> UsageSummary {
     let total_cost = by_model.iter().map(|m| m.cost_usd).sum();
 
     UsageSummary {
-        window_start: Some(window_start),
-        window_end: Some(window_end),
+        window_start: Some(start),
+        window_end: Some(end),
         now,
         elapsed_seconds: elapsed,
         remaining_seconds: remaining,
@@ -120,5 +122,23 @@ pub fn aggregate(entries: &[UsageEntry], now: DateTime<Utc>) -> UsageSummary {
         total_cache_read_tokens: total_cache_r,
         total_cost_usd: total_cost,
         by_model,
+    }
+}
+
+fn empty(now: DateTime<Utc>) -> UsageSummary {
+    UsageSummary {
+        window_start: None,
+        window_end: None,
+        now,
+        elapsed_seconds: 0,
+        remaining_seconds: 0,
+        window_progress: 0.0,
+        total_messages: 0,
+        total_input_tokens: 0,
+        total_output_tokens: 0,
+        total_cache_creation_tokens: 0,
+        total_cache_read_tokens: 0,
+        total_cost_usd: 0.0,
+        by_model: vec![],
     }
 }

@@ -32,23 +32,17 @@ struct Message {
 
 #[derive(Deserialize)]
 struct Usage {
-    #[serde(default)]
-    input_tokens: u64,
-    #[serde(default)]
-    output_tokens: u64,
-    #[serde(default)]
-    cache_creation_input_tokens: u64,
-    #[serde(default)]
-    cache_read_input_tokens: u64,
+    input_tokens: Option<u64>,
+    output_tokens: Option<u64>,
+    cache_creation_input_tokens: Option<u64>,
+    cache_read_input_tokens: Option<u64>,
     cache_creation: Option<CacheCreation>,
 }
 
 #[derive(Deserialize)]
 struct CacheCreation {
-    #[serde(default)]
-    ephemeral_5m_input_tokens: u64,
-    #[serde(default)]
-    ephemeral_1h_input_tokens: u64,
+    ephemeral_5m_input_tokens: Option<u64>,
+    ephemeral_1h_input_tokens: Option<u64>,
 }
 
 pub fn scan_dir(dir: &Path) -> Vec<UsageEntry> {
@@ -89,17 +83,20 @@ fn parse_line(line: &str) -> Option<UsageEntry> {
     }
 
     let (c5m, c1h) = match usage.cache_creation {
-        Some(cc) => (cc.ephemeral_5m_input_tokens, cc.ephemeral_1h_input_tokens),
-        None => (usage.cache_creation_input_tokens, 0),
+        Some(cc) => (
+            cc.ephemeral_5m_input_tokens.unwrap_or(0),
+            cc.ephemeral_1h_input_tokens.unwrap_or(0),
+        ),
+        None => (usage.cache_creation_input_tokens.unwrap_or(0), 0),
     };
 
     Some(UsageEntry {
         timestamp,
         model,
-        input_tokens: usage.input_tokens,
-        output_tokens: usage.output_tokens,
+        input_tokens: usage.input_tokens.unwrap_or(0),
+        output_tokens: usage.output_tokens.unwrap_or(0),
         cache_5m_write_tokens: c5m,
         cache_1h_write_tokens: c1h,
-        cache_read_tokens: usage.cache_read_input_tokens,
+        cache_read_tokens: usage.cache_read_input_tokens.unwrap_or(0),
     })
 }

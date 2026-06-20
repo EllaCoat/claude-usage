@@ -58,7 +58,34 @@ const $ = (sel: string) => {
   return el as HTMLElement;
 };
 
+function renderByModel(by_model: ModelBreakdown[]) {
+  const tbody = $("#by-model tbody");
+  tbody.replaceChildren();
+  for (const m of by_model) {
+    const tr = document.createElement("tr");
+    const total =
+      m.input_tokens + m.output_tokens + m.cache_creation_tokens + m.cache_read_tokens;
+    const cells: Array<[string, string]> = [
+      ["mono", m.model],
+      ["num", nfmt.format(m.message_count)],
+      ["num", fmtTokens(total)],
+      ["num", fmtCost(m.cost_usd)],
+    ];
+    for (const [cls, text] of cells) {
+      const td = document.createElement("td");
+      td.className = cls;
+      td.textContent = text;
+      tr.appendChild(td);
+    }
+    tbody.appendChild(tr);
+  }
+}
+
+let inFlight = false;
+
 async function refresh() {
+  if (inFlight) return;
+  inFlight = true;
   try {
     const s = await invoke<UsageSummary>("get_usage_summary");
     const pct = (s.window_progress * 100).toFixed(1);
@@ -66,7 +93,7 @@ async function refresh() {
     $("#progress-fill").style.width = `${pct}%`;
     $("#progress-label").textContent =
       s.total_messages === 0
-        ? "no activity in last 5h"
+        ? "no active 5h window"
         : `${pct}% elapsed · ${fmtDuration(s.remaining_seconds)} until reset`;
     $("#window-start").textContent = `start ${fmtTime(s.window_start)}`;
     $("#window-end").textContent = `reset ${fmtTime(s.window_end)}`;
@@ -77,25 +104,15 @@ async function refresh() {
       `in ${fmtTokens(s.total_input_tokens)} · out ${fmtTokens(s.total_output_tokens)} · ` +
       `cache write ${fmtTokens(s.total_cache_creation_tokens)} · read ${fmtTokens(s.total_cache_read_tokens)}`;
 
-    const tbody = $("#by-model tbody");
-    tbody.innerHTML = "";
-    for (const m of s.by_model) {
-      const tr = document.createElement("tr");
-      const total = m.input_tokens + m.output_tokens + m.cache_creation_tokens + m.cache_read_tokens;
-      tr.innerHTML = `
-        <td class="mono">${m.model}</td>
-        <td class="num">${nfmt.format(m.message_count)}</td>
-        <td class="num">${fmtTokens(total)}</td>
-        <td class="num">${fmtCost(m.cost_usd)}</td>
-      `;
-      tbody.appendChild(tr);
-    }
+    renderByModel(s.by_model);
 
     $("#status").textContent = `updated ${new Date(s.now).toLocaleTimeString()}`;
     $("#status").classList.remove("error");
   } catch (e) {
     $("#status").textContent = `error: ${e}`;
     $("#status").classList.add("error");
+  } finally {
+    inFlight = false;
   }
 }
 
