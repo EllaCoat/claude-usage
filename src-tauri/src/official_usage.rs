@@ -1,3 +1,4 @@
+use crate::win;
 use chrono::{DateTime, Utc};
 use regex::Regex;
 use serde::Serialize;
@@ -23,8 +24,10 @@ fn re<'a>(slot: &'a OnceLock<Regex>, pat: &str) -> &'a Regex {
 }
 
 pub fn fetch() -> Result<OfficialUsage, String> {
-    let output = Command::new("claude")
-        .args(["--print", "/usage"])
+    let mut cmd = Command::new("claude");
+    cmd.args(["--print", "/usage"]);
+    win::hide_window(&mut cmd);
+    let output = cmd
         .output()
         .map_err(|e| format!("failed to spawn claude: {}", e))?;
 

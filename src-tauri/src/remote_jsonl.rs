@@ -1,5 +1,6 @@
 use crate::aggregator::{aggregate, UsageSummary, WINDOW_HOURS};
 use crate::usage::parse_line;
+use crate::win;
 use chrono::{Duration, Utc};
 use std::io::{BufRead, BufReader, Read};
 use std::process::{Command, Stdio};
@@ -18,12 +19,12 @@ pub fn fetch(host: &str) -> Result<UsageSummary, String> {
         cutoff_str
     );
 
-    let mut child = Command::new("ssh")
-        .args([host, &remote_cmd])
+    let mut cmd = Command::new("ssh");
+    cmd.args([host, &remote_cmd])
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()
-        .map_err(|e| format!("ssh spawn failed: {}", e))?;
+        .stderr(Stdio::piped());
+    win::hide_window(&mut cmd);
+    let mut child = cmd.spawn().map_err(|e| format!("ssh spawn failed: {}", e))?;
 
     let stdout = child
         .stdout

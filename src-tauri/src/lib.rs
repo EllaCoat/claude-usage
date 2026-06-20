@@ -4,6 +4,7 @@ mod paths;
 mod pricing;
 mod remote_jsonl;
 mod usage;
+mod win;
 
 use chrono::Utc;
 
