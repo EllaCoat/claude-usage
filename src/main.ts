@@ -37,7 +37,10 @@ type OfficialUsage = {
 
 const LOCAL_REFRESH_MS = 2_000;
 const OFFICIAL_REFRESH_MS = 120_000;
-const REMOTE_REFRESH_MS = 30_000;
+const REMOTE_REFRESH_OK_MS = 30_000;
+// ssh が落ちている / EC2 停止中だと毎回 ConnectTimeout 分待たされて電気の無駄なので、
+// 失敗時は長めに寝かす。 ↻ ボタンで強制再試行可能。
+const REMOTE_REFRESH_FAIL_MS = 600_000;
 const REMOTE_HOST = "ella-mc";
 
 const nfmt = new Intl.NumberFormat();
@@ -177,19 +180,29 @@ async function refreshOfficial() {
 }
 
 // ---- Remote jsonl ----
+// 成功時は 30s、 失敗時は 10 分後にリセットして再試行する setTimeout chain。
+// setInterval だと失敗時も 30s 毎に ssh ConnectTimeout 待ちを繰り返す羽目になる。
 let remoteInFlight = false;
+let remoteTimer: number | null = null;
+function scheduleRemote(delayMs: number) {
+  if (remoteTimer !== null) window.clearTimeout(remoteTimer);
+  remoteTimer = window.setTimeout(refreshRemote, delayMs);
+}
 async function refreshRemote() {
   if (remoteInFlight) return;
   remoteInFlight = true;
   setStatus("#remote-status", "fetching via ssh…");
+  let ok = false;
   try {
     const s = await invoke<UsageSummary>("get_remote_jsonl_summary", { host: REMOTE_HOST });
     renderJsonl("remote", s);
     setStatus("#remote-status", `updated ${new Date(s.now).toLocaleTimeString()}`);
+    ok = true;
   } catch (e) {
-    setStatus("#remote-status", `error: ${e}`, true);
+    setStatus("#remote-status", `error: ${e} · retry in 10m`, true);
   } finally {
     remoteInFlight = false;
+    scheduleRemote(ok ? REMOTE_REFRESH_OK_MS : REMOTE_REFRESH_FAIL_MS);
   }
 }
 
@@ -208,5 +221,5 @@ window.addEventListener("DOMContentLoaded", () => {
 
   setInterval(refreshLocal, LOCAL_REFRESH_MS);
   setInterval(refreshOfficial, OFFICIAL_REFRESH_MS);
-  setInterval(refreshRemote, REMOTE_REFRESH_MS);
+  // remote は refreshRemote 内で次回をスケジュールするので setInterval は使わない。
 });

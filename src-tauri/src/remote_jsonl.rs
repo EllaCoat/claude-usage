@@ -1,6 +1,8 @@
 use crate::aggregator::{aggregate, UsageSummary, WINDOW_HOURS};
 use crate::usage::parse_line;
 use crate::win;
+use base64::engine::general_purpose::STANDARD as B64;
+use base64::Engine as _;
 use chrono::{Duration, Utc};
 use std::process::{Command, Stdio};
 use std::thread;
@@ -20,10 +22,18 @@ pub fn fetch(host: &str) -> Result<UsageSummary, String> {
     let cutoff_str = cutoff.format("%Y-%m-%dT%H:%M:%S.000Z").to_string();
 
     // -mmin -360 でファイル mtime も 6 時間以内に絞る (= active session の jsonl のみスキャン)。
-    let remote_cmd = format!(
+    let inner_cmd = format!(
         r#"find ~/.claude/projects -name '*.jsonl' -mmin -360 -exec jq -c 'select(.type == "assistant" and (.timestamp // "") > "{}")' {{}} +"#,
         cutoff_str
     );
+
+    // Windows の std::process::Command は引数を CommandLineToArgvW 互換で quote するが、
+    // ssh は引数群を「ローカルで join → リモート shell に 1 string で渡す」 という二段挙動なので、
+    // single/double quote 混在の inner_cmd を素で渡すと Rust の自動 escape と ssh の join
+    // どちらかで壊れるケースに当たる。 base64 でくるんでリモート側で復号 → bash に流せば、
+    // shell に届く文字種が英数 + `=` `+` `/` + ` ` `|` だけになり quote 問題が消える。
+    let encoded = B64.encode(inner_cmd.as_bytes());
+    let remote_cmd = format!("echo {} | base64 -d | bash", encoded);
 
     // ssh の挙動を「不通なら速やかに諦める」 寄りに固定:
     // - ConnectTimeout=5             : TCP connect を 5s で諦める
