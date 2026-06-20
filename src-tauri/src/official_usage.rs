@@ -18,7 +18,7 @@ static SESSION_RE: OnceLock<Regex> = OnceLock::new();
 static WEEK_ALL_RE: OnceLock<Regex> = OnceLock::new();
 static WEEK_SONNET_RE: OnceLock<Regex> = OnceLock::new();
 
-fn re(slot: &OnceLock<Regex>, pat: &str) -> &Regex {
+fn re<'a>(slot: &'a OnceLock<Regex>, pat: &str) -> &'a Regex {
     slot.get_or_init(|| Regex::new(pat).expect("invalid regex"))
 }
 
