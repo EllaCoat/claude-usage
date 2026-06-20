@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Claude Usage</title>
+    <script type="module" src="/src/main.ts" defer></script>
+  </head>
+  <body>
+    <main class="container">
+      <header>
+        <h1>Claude Usage</h1>
+        <span id="status" class="status muted">—</span>
+      </header>
+
+      <section class="card">
+        <div class="row spread">
+          <span class="label">5h window</span>
+          <span id="progress-label" class="muted small">—</span>
+        </div>
+        <div class="progress" aria-label="window progress">
+          <div id="progress-fill" class="progress-fill"></div>
+        </div>
+        <div class="row spread small muted">
+          <span id="window-start">—</span>
+          <span id="window-end">—</span>
+        </div>
+      </section>
+
+      <section class="card stats">
+        <div class="stat">
+          <span class="label">cost</span>
+          <span id="cost" class="big">—</span>
+        </div>
+        <div class="stat">
+          <span class="label">messages</span>
+          <span id="messages" class="big">—</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <div class="label">tokens</div>
+        <div id="tokens" class="mono small">—</div>
+      </section>
+
+      <section class="card">
+        <div class="label">by model</div>
+        <table id="by-model">
+          <thead>
+            <tr><th>model</th><th class="num">msgs</th><th class="num">tokens</th><th class="num">cost</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </section>
+    </main>
+  </body>
+</html>
